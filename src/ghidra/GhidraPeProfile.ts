@@ -4,6 +4,40 @@ import {
   type GhidraSessionInfo,
 } from "./GhidraSessionValues.js";
 
+const PDB_LOCATOR_INLINE_BYTE_BUDGET = 1024;
+
+/** Measure JSON quotes, escapes and UTF-8 without allocating the encoded string. */
+const pdbLocatorFitsInlineBudget = (value: string): boolean => {
+  if (value.length * 6 + 2 <= PDB_LOCATOR_INLINE_BYTE_BUDGET) return true;
+  if (value.length + 2 > PDB_LOCATOR_INLINE_BYTE_BUDGET) return false;
+  let bytes = 2;
+  for (let index = 0; index < value.length; index += 1) {
+    const point = value.codePointAt(index) ?? 0;
+    if (point > 0xffff) {
+      bytes += 4;
+      index += 1;
+    } else if (point >= 0xd800 && point <= 0xdfff) {
+      // JSON.stringify escapes unpaired UTF-16 surrogates as six ASCII bytes.
+      bytes += 6;
+    } else if (point < 0x20) {
+      bytes +=
+        point === 8 ||
+        point === 9 ||
+        point === 10 ||
+        point === 12 ||
+        point === 13
+          ? 2
+          : 6;
+    } else if (point === 0x22 || point === 0x5c) {
+      bytes += 2;
+    } else {
+      bytes += point < 0x80 ? 1 : point < 0x800 ? 2 : 3;
+    }
+    if (bytes > PDB_LOCATOR_INLINE_BYTE_BUDGET) return false;
+  }
+  return true;
+};
+
 /** Use reported Program facts first, retaining declared PE facts as a fallback. */
 export const ghidraPePdbLimitations = (
   target: BinaryTarget,
@@ -21,10 +55,9 @@ export const ghidraPePdbLimitations = (
     return reported;
   const { pdbFileName, guid, age } = target.codeView;
   // Include JSON escaping in the inline budget before allocating that representation.
-  const locator =
-    pdbFileName.length * 6 + 2 <= 1024
-      ? JSON.stringify(pdbFileName)
-      : "(declared locator omitted from this inline caveat: 1024-byte resource budget)";
+  const locator = pdbLocatorFitsInlineBudget(pdbFileName)
+    ? JSON.stringify(pdbFileName)
+    : `(declared locator omitted from this inline caveat: ${PDB_LOCATOR_INLINE_BYTE_BUDGET}-byte resource budget)`;
   const identity =
     guid === null
       ? `age (decimal) ${age}`

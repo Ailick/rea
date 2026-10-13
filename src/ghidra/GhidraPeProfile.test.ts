@@ -166,3 +166,38 @@ it("bounds an escaped inline locator while preserving its declared source value"
   expect(caveats).toContain("01234567-89ab-cdef-0123-456789abcdef");
   expect(selected.codeView.pdbFileName).toBe(name);
 });
+
+it.each([
+  ["long ASCII", "a".repeat(171)],
+  ["ASCII at the byte budget", "a".repeat(1022)],
+  ["ASCII beyond the byte budget", "a".repeat(1023)],
+  ["quotes at the byte budget", '"'.repeat(511)],
+  ["quotes beyond the byte budget", '"'.repeat(512)],
+  ["short control escapes", "\n".repeat(511)],
+  ["short control escapes beyond the byte budget", "\n".repeat(512)],
+  ["six-byte control escapes", "\u0001".repeat(170)],
+  ["six-byte control escapes beyond the byte budget", "\u0001".repeat(171)],
+  ["UTF-8 BMP text", "中".repeat(340)],
+  ["UTF-8 BMP text beyond the byte budget", "中".repeat(341)],
+  ["surrogate pairs", "😀".repeat(255)],
+  ["surrogate pairs beyond the byte budget", "😀".repeat(256)],
+  ["unpaired high surrogates", "\ud800".repeat(170)],
+  ["unpaired high surrogates beyond the byte budget", "\ud800".repeat(171)],
+  ["unpaired low surrogates", "\udfff".repeat(170)],
+  ["unpaired low surrogates beyond the byte budget", "\udfff".repeat(171)],
+])("uses actual JSON UTF-8 size for %s", (_, name) => {
+  const selected = {
+    ...target,
+    codeView: { ...target.codeView!, pdbFileName: name },
+  };
+  const caveat = ghidraPePdbLimitations(selected, undefined).join(" ");
+  const encoded = JSON.stringify(name);
+  if (Buffer.byteLength(encoded) <= 1024) {
+    expect(caveat).toContain(`PDB ${encoded} (`);
+    expect(caveat).not.toContain("locator omitted");
+  } else {
+    expect(caveat).toContain("locator omitted");
+    expect(caveat).not.toContain(encoded);
+  }
+  expect(selected.codeView.pdbFileName).toBe(name);
+});

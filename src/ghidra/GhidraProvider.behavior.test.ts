@@ -85,54 +85,59 @@ const createElfClient = async (ghidra: GhidraProvider) => {
   return ghidra.createClient(target, resolved.value.profile);
 };
 
-it("retains historical PE PDB Evidence without replaying its old projection", async () => {
-  const target = peTarget("x86_64");
-  const resolved = await provider().resolveAnalysisProfile(target);
-  if (!resolved.ok || resolved.value.profile === null)
-    throw new Error("Expected admitted PE profile");
-  const current = resolved.value.profile;
-  const prior = createAnalysisProfile(current.provider, {
-    ...current.parameters,
-    pdb_observations: "program-info-v1",
-  });
-  const operation = "search_procedures";
-  const parameters = { pattern: "wmain" };
-  const limitations = ["Legacy projection collapsed unknown PDB load state."];
-  const cache = new AnalysisSnapshotCache();
-  cache.record({
-    target,
-    profile: prior,
-    operation,
-    parameters,
-    execution: createAnalysisExecution([], prior.provider, {
-      subject: target,
+it.each(["program-info-v1", "program-info-v2"])(
+  "retains historical PE PDB Evidence for %s without replaying its old projection",
+  async (pdbObservations) => {
+    const target = peTarget("x86_64");
+    const resolved = await provider().resolveAnalysisProfile(target);
+    if (!resolved.ok || resolved.value.profile === null)
+      throw new Error("Expected admitted PE profile");
+    const current = resolved.value.profile;
+    const prior = createAnalysisProfile(current.provider, {
+      ...current.parameters,
+      pdb_observations: pdbObservations,
+    });
+    const operation = "search_procedures";
+    const parameters = { pattern: "wmain" };
+    const limitations = ["Legacy projection collapsed unknown PDB load state."];
+    const cache = new AnalysisSnapshotCache();
+    cache.record({
+      target,
+      profile: prior,
+      operation,
+      parameters,
+      execution: createAnalysisExecution([], prior.provider, {
+        subject: target,
+        analysisProfile: prior,
+        limitations,
+      }),
+    });
+    const evidence = createEvidence(target, prior.provider, {
+      operation,
+      parameters,
+      result: [],
       analysisProfile: prior,
       limitations,
-    }),
-  });
-  const evidence = createEvidence(target, prior.provider, {
-    operation,
-    parameters,
-    result: [],
-    analysisProfile: prior,
-    limitations,
-  });
-  const exported = cache.export(
-    target,
-    prior,
-    createEvidenceBundle([evidence]),
-  );
-  if (!exported.ok) throw exported.error;
-  const imported = new AnalysisSnapshotCache();
-  expect(imported.import(exported.value, undefined, () => ok(0)).ok).toBe(true);
-  expect(
-    imported.lookup(target, current, operation, parameters),
-  ).toBeUndefined();
-  expect(
-    imported.lookup(target, prior, operation, parameters)?.limitations,
-  ).toEqual(expect.arrayContaining(limitations));
-  expect(exported.value.evidence_bundle.records).toContainEqual(evidence);
-});
+    });
+    const exported = cache.export(
+      target,
+      prior,
+      createEvidenceBundle([evidence]),
+    );
+    if (!exported.ok) throw exported.error;
+    const imported = new AnalysisSnapshotCache();
+    expect(imported.import(exported.value, undefined, () => ok(0)).ok).toBe(
+      true,
+    );
+    expect(
+      imported.lookup(target, current, operation, parameters),
+    ).toBeUndefined();
+    expect(
+      imported.lookup(target, prior, operation, parameters)?.limitations,
+    ).toEqual(expect.arrayContaining(limitations));
+    expect(exported.value.evidence_bundle.records).toContainEqual(evidence);
+  },
+);
 
 describe("Ghidra provider", () => {
   it("commits DOS loader and real-mode language while retaining the CPU family", async () => {
