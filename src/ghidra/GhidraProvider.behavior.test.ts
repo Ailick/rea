@@ -85,7 +85,7 @@ const createElfClient = async (ghidra: GhidraProvider) => {
   return ghidra.createClient(target, resolved.value.profile);
 };
 
-it.each(["program-info-v1", "program-info-v2"])(
+it.each(["program-info-v1", "program-info-v2", "program-info-v3"])(
   "retains historical PE PDB Evidence for %s without replaying its old projection",
   async (pdbObservations) => {
     const target = peTarget("x86_64");

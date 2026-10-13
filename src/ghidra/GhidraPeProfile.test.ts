@@ -70,9 +70,9 @@ it.each([true, false, null])(
   "uses reported PDB observations once with loaded = %s",
   (loaded) => {
     const pdb = {
-      file: "reported.pdb",
-      guid: "reported-guid",
-      age: "a",
+      file: "public.pdb",
+      guid: "{01234567-89AB-CDEF-0123-456789ABCDEF}",
+      age: "0X000A",
       signature: null,
       version: "RSDS",
       loaded,
@@ -80,9 +80,42 @@ it.each([true, false, null])(
     const caveats = ghidraPePdbLimitations(target, pdb);
     expect(caveats).toEqual(ghidraPdbLimitations(pdb));
     expect(caveats).toHaveLength(1);
-    expect(caveats.join(" ")).not.toContain("public.pdb");
+    expect(caveats.join(" ")).not.toContain('PDB "public.pdb"');
   },
 );
+
+it.each([
+  { file: "different.pdb", guid: "0123456789abcdef0123456789abcdef", age: "a" },
+  { file: "public.pdb", guid: "1123456789abcdef0123456789abcdef", age: "a" },
+  { file: "public.pdb", guid: "0123456789abcdef0123456789abcdef", age: "10" },
+  { file: "public.pdb", guid: "unrecognized-guid", age: "a" },
+  { file: "public.pdb", guid: "0123456789abcdef0123456789abcdef", age: "ten" },
+])("retains non-equivalent declared PDB identity for %j", (identity) => {
+  for (const loaded of [false, null, true]) {
+    const pdb = { ...absentAttributes, ...identity, version: "RSDS", loaded };
+    const caveats = ghidraPePdbLimitations(target, pdb);
+    expect(caveats[0]).toBe(ghidraPdbLimitations(pdb)[0]);
+    expect(caveats[0]).toContain(identity.file);
+    expect(caveats[0]).toContain(identity.guid);
+    expect(caveats[0]).toContain(`age (hex) ${identity.age}`);
+    expect(caveats).toHaveLength(2);
+    expect(caveats[1]).toContain('PDB "public.pdb"');
+    expect(caveats[1]).toContain("01234567-89ab-cdef-0123-456789abcdef");
+    expect(caveats[1]).toContain("age (decimal) 10");
+    expect(caveats[1]).toContain("equivalence is not established");
+    expect(pdb).toMatchObject({ ...identity, loaded });
+  }
+});
+
+it.each([
+  "0123456789ABCDEF0123456789ABCDEF",
+  "01234567-89ab-cdef-0123-456789abcdef",
+])("avoids duplicate identity for normalized matching GUID %s", (guid) => {
+  const pdb = { ...absentAttributes, file: "public.pdb", guid, age: "a" };
+  expect(ghidraPePdbLimitations(target, pdb)).toEqual(
+    ghidraPdbLimitations(pdb),
+  );
+});
 
 it("retains explicit failure to load without asserting all names are generated", () => {
   const caveats = ghidraPePdbLimitations(target, {

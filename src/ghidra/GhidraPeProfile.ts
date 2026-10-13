@@ -1,10 +1,42 @@
-import type { BinaryTarget } from "../domain/binaryTargetTypes.js";
+import type {
+  BinaryTarget,
+  PeCodeViewRecord,
+} from "../domain/binaryTargetTypes.js";
 import {
   ghidraPdbLimitations,
   type GhidraSessionInfo,
 } from "./GhidraSessionValues.js";
 
 const PDB_LOCATOR_INLINE_BYTE_BUDGET = 1024;
+
+/** Establish equivalence only for the declared fields and recognized formats. */
+const reportedPdbMatchesDeclaration = (
+  declared: PeCodeViewRecord,
+  reported: NonNullable<GhidraSessionInfo["pdb"]>,
+): boolean => {
+  if (
+    (reported.file !== declared.pdbPath &&
+      reported.file !== declared.pdbFileName) ||
+    reported.age === null ||
+    !/^(?:0x)?[0-9a-f]+$/iu.test(reported.age) ||
+    Number.parseInt(reported.age, 16) !== declared.age
+  )
+    return false;
+  if (declared.guid === null) return reported.guid === null;
+  if (reported.guid === null) return false;
+  let guid = reported.guid;
+  if (guid.startsWith("{") && guid.endsWith("}")) guid = guid.slice(1, -1);
+  if (
+    !/^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/iu.test(
+      guid,
+    )
+  )
+    return false;
+  return (
+    guid.replaceAll("-", "").toLowerCase() ===
+    declared.guid.replaceAll("-", "").toLowerCase()
+  );
+};
 
 /** Measure JSON quotes, escapes and UTF-8 without allocating the encoded string. */
 const pdbLocatorFitsInlineBudget = (value: string): boolean => {
@@ -47,10 +79,7 @@ export const ghidraPePdbLimitations = (
   const reported = ghidraPdbLimitations(pdb);
   if (
     target.codeView === undefined ||
-    (pdb !== undefined &&
-      pdb.file !== null &&
-      pdb.age !== null &&
-      (target.codeView.guid === null || pdb.guid !== null))
+    (pdb !== undefined && reportedPdbMatchesDeclaration(target.codeView, pdb))
   )
     return reported;
   const { pdbFileName, guid, age } = target.codeView;
@@ -70,6 +99,11 @@ export const ghidraPePdbLimitations = (
         : pdb.loaded === true
           ? "Ghidra reports a loaded PDB; this declared identity is not an independent matching-PDB attestation"
           : "Ghidra reports load state unknown";
-  const declared = `The PE CodeView record references PDB ${locator} (${identity}); ${state}. Original PDB names and types may be missing. Use list_procedures and address-based analysis to inspect recovered functions. REA does not admit a caller-selected PDB companion.`;
+  const comparison =
+    pdb !== undefined &&
+    [pdb.file, pdb.guid, pdb.age].some((value) => value !== null)
+      ? " Reported and declared PDB observations are retained separately; equivalence is not established."
+      : "";
+  const declared = `The PE CodeView record references PDB ${locator} (${identity}); ${state}.${comparison} Original PDB names and types may be missing. Use list_procedures and address-based analysis to inspect recovered functions. REA does not admit a caller-selected PDB companion.`;
   return pdb === undefined ? [declared] : [...reported, declared];
 };
