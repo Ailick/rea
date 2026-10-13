@@ -13,11 +13,10 @@ export const ghidraPePdbLimitations = (
   const reported = ghidraPdbLimitations(pdb);
   if (
     target.codeView === undefined ||
-    pdb?.loaded === true ||
     (pdb !== undefined &&
-      [pdb.file, pdb.guid, pdb.age, pdb.signature, pdb.version].some(
-        (attribute) => attribute !== null,
-      ))
+      pdb.file !== null &&
+      pdb.age !== null &&
+      (target.codeView.guid === null || pdb.guid !== null))
   )
     return reported;
   const { pdbFileName, guid, age } = target.codeView;
@@ -35,7 +34,9 @@ export const ghidraPePdbLimitations = (
       ? "Ghidra did not report PDB attributes; load state unknown"
       : pdb.loaded === false
         ? "Ghidra reports not loaded"
-        : "Ghidra reports load state unknown";
+        : pdb.loaded === true
+          ? "Ghidra reports a loaded PDB; this declared identity is not an independent matching-PDB attestation"
+          : "Ghidra reports load state unknown";
   const declared = `The PE CodeView record references PDB ${locator} (${identity}); ${state}. Original PDB names and types may be missing. Use list_procedures and address-based analysis to inspect recovered functions. REA does not admit a caller-selected PDB companion.`;
   return pdb === undefined ? [declared] : [...reported, declared];
 };

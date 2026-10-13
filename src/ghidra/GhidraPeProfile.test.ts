@@ -31,6 +31,27 @@ const absentAttributes = {
   loaded: null,
 };
 
+it.each(["file", "guid", "age"] as const)(
+  "retains declared identity when only reported %s is omitted",
+  (attribute) => {
+    const pdb: GhidraSessionInfo["pdb"] = {
+      file: "program.pdb",
+      guid: "reported-guid",
+      age: "a",
+      signature: null,
+      version: "RSDS",
+      loaded: null,
+      resource_limit: { omitted_attributes: [attribute], utf16_budget: 4096 },
+      [attribute]: null,
+    };
+    const caveats = ghidraPePdbLimitations(target, pdb).join(" ");
+    expect(caveats).toContain("omitted");
+    expect(caveats).toContain('PDB "public.pdb"');
+    expect(caveats).toContain("01234567-89ab-cdef-0123-456789abcdef");
+    expect(caveats).toContain("load state unknown");
+  },
+);
+
 it.each([undefined, absentAttributes])(
   "retains declared identity and unknown load state when reported attributes are %j",
   (pdb) => {
@@ -77,9 +98,11 @@ it("retains a loaded-state attestation caveat even when reference attributes are
     ...absentAttributes,
     loaded: true,
   });
-  expect(caveats).toEqual(
-    ghidraPdbLimitations({ ...absentAttributes, loaded: true }),
+  expect(caveats[0]).toEqual(
+    ghidraPdbLimitations({ ...absentAttributes, loaded: true })[0],
   );
+  expect(caveats).toHaveLength(2);
+  expect(caveats[1]).toContain('PDB "public.pdb"');
   expect(caveats[0]).toContain("not an independent PDB identity");
   expect(caveats[0]).not.toContain("reports not loaded");
 });
@@ -87,7 +110,7 @@ it("retains a loaded-state attestation caveat even when reference attributes are
 it("preserves omitted-attribute resource coverage with declared fallback identity", () => {
   const pdb: GhidraSessionInfo["pdb"] = {
     ...absentAttributes,
-    resource_limit: { omitted_attributes: ["file"], utf16_budget: 2048 },
+    resource_limit: { omitted_attributes: ["file"], utf16_budget: 4096 },
   };
   const caveats = ghidraPePdbLimitations(target, pdb);
   expect(caveats).toHaveLength(2);

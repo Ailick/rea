@@ -20,7 +20,72 @@ import { ghidraFunctionDossier } from "../domain/ghidraValues.fixture.js";
 
 const provider = { id: "fixture", name: "Fixture", version: "1" };
 
-it("retains unique upstream limits in invocation order across concurrent observations", async () => {
+it("keeps Evidence identity stable when dependent branches finish in opposite orders", async () => {
+  const run = async (order: readonly number[]) => {
+    const gate = () => {
+      let resolve: () => void = () => {
+        throw new Error("gate not initialized");
+      };
+      const promise = new Promise<void>((release) => {
+        resolve = release;
+      });
+      return { promise, resolve };
+    };
+    const parents = [gate(), gate()];
+    const children = [gate(), gate()];
+    const analysis: AnalysisOperationPort = {
+      execute: async (operation, parameters) => {
+        const index = Number(parameters.index);
+        if (operation === "procedure_address") {
+          await parents[index]!.promise;
+          return ok(createAnalysisExecution(String(index), provider));
+        }
+        children[index]!.resolve();
+        return ok(
+          createAnalysisExecution(String(index), provider, {
+            limitations: [
+              index === 0 ? "first child caveat" : "second child caveat",
+            ],
+          }),
+        );
+      },
+    };
+    const composed = await executeComposedWorkflow(
+      analysis,
+      async (observed) => {
+        const branches = Promise.all(
+          [0, 1].map(async (index) => {
+            await observed.execute("procedure_address", { index });
+            const child = await observed.execute("address_name", { index });
+            if (!child.ok) throw child.error;
+            return child.value.result;
+          }),
+        );
+        for (const index of order) {
+          parents[index]!.resolve();
+          await children[index]!.promise;
+        }
+        return ok(await branches);
+      },
+    );
+    if (!composed.ok) throw composed.error;
+    return createWorkflowEvidence({
+      target: undefined,
+      operation: "batch_decompile",
+      parameters: {},
+      result: composed.value.result,
+      upstreamProfile: undefined,
+      upstreamLimitations: composed.value.limitations,
+    });
+  };
+  const left = await run([0, 1]);
+  const right = await run([1, 0]);
+  expect(left.normalized_result).toEqual(right.normalized_result);
+  expect(left.limitations).toEqual(right.limitations);
+  expect(left.evidence_id).toBe(right.evidence_id);
+});
+
+it("retains unique upstream limits in canonical order across concurrent observations", async () => {
   let release: () => void = () => {
     throw new Error("gate not initialized");
   };
@@ -52,7 +117,7 @@ it("retains unique upstream limits in invocation order across concurrent observa
   });
   expect(calls).toBe(2);
   expect(result).toEqual(
-    ok({ result: { count: 0 }, limitations: ["first", "shared", "second"] }),
+    ok({ result: { count: 0 }, limitations: ["first", "second", "shared"] }),
   );
 });
 
