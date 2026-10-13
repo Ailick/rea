@@ -9,6 +9,7 @@ import {
   AnalysisOutputError,
 } from "../../../src/domain/analysisErrorCore.js";
 import type { RelationshipCoverage } from "../../../src/domain/relationshipCoverage.js";
+import { parseEvidence } from "../../../src/domain/evidence.js";
 import { err, ok as resultOk } from "../../../src/domain/result.js";
 
 import { closeEnhancedToolResources, connect } from "./enhancedToolsHarness.js";
@@ -125,9 +126,13 @@ describe("enhanced MCP tools", () => {
         limitations: [caveat],
       },
     });
-    expect(JSON.stringify(graph.structuredContent)?.split(caveat)).toHaveLength(
-      2,
-    );
+    const evidence = parseEvidence(graph.structuredContent);
+    expect(
+      JSON.stringify(evidence.normalized_result).split(caveat),
+    ).toHaveLength(2);
+    expect(
+      evidence.limitations.filter((limit) => limit === caveat),
+    ).toHaveLength(1);
 
     const trace = await client.callTool({
       name: "trace_call_path",
