@@ -830,36 +830,60 @@ describe("Ghidra result projection", () => {
 });
 
 describe("Ghidra PE CodeView debug symbol limitations", () => {
-  it("projects unapplied companion PDB limitation for PE target with CodeView record", async () => {
-    const ghidra = provider(installationHost(), () => ({
-      start: () => Promise.resolve(ok(sessionInfo())),
-      callTool: () => Promise.resolve(ok(null)),
-      close: () => Promise.resolve(ok(null)),
-    }));
-    const target = {
-      ...peTarget("x86_64"),
-      codeView: {
-        pdbPath: "C:\\projects\\app\\build\\test.pdb",
-        pdbFileName: "test.pdb",
-        guid: "01234567-89ab-cdef-0123-456789abcdef",
-        age: 1,
-      },
-    };
-    const profile = await ghidra.resolveAnalysisProfile(target);
-    if (!profile.ok || profile.value.profile === null)
-      throw new Error("expected PE profile");
-    const client = ghidra.createClient(target, profile.value.profile);
-    const health = await client.execute("health", {});
-    expect(health).toMatchObject({
-      ok: true,
-      value: {
-        limitations: expect.arrayContaining([
-          'The target references debug symbols "test.pdb" (GUID 01234567-89ab-cdef-0123-456789abcdef, age 1) that were not applied; procedure names are analysis-generated.',
-        ]),
-      },
-    });
-    await client.close();
-  });
+  it.each([
+    ["absent report", undefined, "load state unknown"],
+    ["unknown load", null, "load state unknown"],
+    ["not loaded", false, "reports not loaded"],
+    ["loaded", true, "reports a loaded PDB"],
+  ] as const)(
+    "preserves %s with one PDB caveat for a declared CodeView record",
+    async (_, loaded, expected) => {
+      const ghidra = provider(installationHost(), () => ({
+        start: () =>
+          Promise.resolve(
+            ok({
+              ...sessionInfo(),
+              ...(loaded === undefined
+                ? {}
+                : {
+                    pdb: {
+                      file: "test.pdb",
+                      guid: "01234567-89ab-cdef-0123-456789abcdef",
+                      age: "1",
+                      signature: null,
+                      version: "RSDS",
+                      loaded,
+                    },
+                  }),
+            }),
+          ),
+        callTool: () => Promise.resolve(ok(null)),
+        close: () => Promise.resolve(ok(null)),
+      }));
+      const target = {
+        ...peTarget("x86_64"),
+        codeView: {
+          pdbPath: "C:\\projects\\app\\build\\test.pdb",
+          pdbFileName: "test.pdb",
+          guid: "01234567-89ab-cdef-0123-456789abcdef",
+          age: 1,
+        },
+      };
+      const profile = await ghidra.resolveAnalysisProfile(target);
+      if (!profile.ok || profile.value.profile === null)
+        throw new Error("expected PE profile");
+      const client = ghidra.createClient(target, profile.value.profile);
+      const health = await client.execute("health", {});
+      if (!health.ok) throw health.error;
+      const pdbCaveats = health.value.limitations.filter((limit) =>
+        limit.includes("PDB"),
+      );
+      expect(pdbCaveats).toHaveLength(1);
+      expect(pdbCaveats[0]).toContain(expected);
+      expect(pdbCaveats[0]).not.toContain("names are analysis-generated");
+      await client.close();
+    },
+  );
 });
 
 describe("Ghidra relationship coverage", () => {

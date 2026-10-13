@@ -69,7 +69,7 @@ import {
   isGhidraMipsSoftFloatTarget,
 } from "./GhidraMipsProfile.js";
 import { ghidraRiscvLimitations } from "./GhidraRiscvProfile.js";
-import { ghidraPeCodeViewLimitations } from "./GhidraPeProfile.js";
+import { ghidraPePdbLimitations } from "./GhidraPeProfile.js";
 import { unverifiedGhidraBuildLimitation } from "./GhidraInstallationPolicy.js";
 import { GhidraHeadlessLauncher } from "./GhidraLauncher.js";
 import { attestGhidraNativeLoadImage } from "./GhidraLoadImageAttest.js";
@@ -89,10 +89,7 @@ import {
   limitationsFor,
 } from "./GhidraProviderCapabilities.js";
 import type { GhidraSessionError } from "./GhidraSessionError.js";
-import {
-  ghidraPdbLimitations,
-  type GhidraSessionInfo,
-} from "./GhidraSessionValues.js";
+import type { GhidraSessionInfo } from "./GhidraSessionValues.js";
 import { ghidraExtensionFailure } from "./extensions/GhidraExtensionFailures.js";
 import {
   ghidraExtensionSchema,
@@ -531,7 +528,6 @@ export const createGhidraProviderClient = (input: {
   // Replaced by the reported outcome once the session handshake is checked.
   const seedLimitations: string[] = [...ghidraSeedLimitations(seeds)];
   const pdbLimitations: string[] = [];
-  let pdbLoaded = false;
   // Replaced by the reported storage outcome once the handshake is checked.
   const softFloatLimitations: string[] = [
     ...ghidraMipsSoftFloatLimitations(softFloat),
@@ -657,11 +653,10 @@ export const createGhidraProviderClient = (input: {
     info: GhidraSessionInfo,
   ): Promise<AnalysisError | undefined> => {
     if (target.format === "pe") {
-      pdbLoaded = info.pdb?.loaded === true;
       pdbLimitations.splice(
         0,
         pdbLimitations.length,
-        ...ghidraPdbLimitations(info.pdb),
+        ...ghidraPePdbLimitations(target, info.pdb),
       );
     }
     const softFloatReason = ghidraMipsSoftFloatFailure(
@@ -716,7 +711,6 @@ export const createGhidraProviderClient = (input: {
     ...ghidraExtensionLimitations(extensions),
     ...seedLimitations,
     ...pdbLimitations,
-    ...ghidraPeCodeViewLimitations(target, pdbLoaded),
     ...(releaseLimitation === undefined ? [] : [releaseLimitation]),
   ];
   const nativeAotOwner =
