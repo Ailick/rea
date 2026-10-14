@@ -168,6 +168,67 @@ it("reports NB10 declared age without inventing a GUID", () => {
   expect(caveats[0]).not.toContain("GUID");
 });
 
+it.each([false, null, true])(
+  "keeps an omitted NB10 GUID unknown with loaded = %s",
+  (loaded) => {
+    const pdbPath = "a".repeat(4070) + "\\legacy.pdb";
+    const legacy = {
+      ...target,
+      codeView: {
+        pdbPath,
+        pdbFileName: "legacy.pdb",
+        guid: null,
+        age: 2,
+      },
+    };
+    const pdb = {
+      ...absentAttributes,
+      file: pdbPath,
+      age: "2",
+      signature: "01234567",
+      version: "NB10",
+      loaded,
+    };
+    expect(ghidraPePdbLimitations(legacy, pdb)).toEqual(
+      ghidraPdbLimitations(pdb),
+    );
+    const omitted: GhidraSessionInfo["pdb"] = {
+      ...pdb,
+      resource_limit: { omitted_attributes: ["guid"], utf16_budget: 4096 },
+    };
+    const caveats = ghidraPePdbLimitations(legacy, omitted);
+    expect(caveats).toEqual([
+      ...ghidraPdbLimitations(omitted),
+      expect.stringContaining('PDB "legacy.pdb" (age (decimal) 2)'),
+    ]);
+    expect(caveats.at(-1)).toContain("equivalence is not established");
+  },
+);
+
+it.each(["signature", "version"] as const)(
+  "keeps matching NB10 identity when only %s is omitted",
+  (attribute) => {
+    const legacy = {
+      ...target,
+      codeView: {
+        pdbPath: "legacy.pdb",
+        pdbFileName: "legacy.pdb",
+        guid: null,
+        age: 2,
+      },
+    };
+    const pdb: GhidraSessionInfo["pdb"] = {
+      ...absentAttributes,
+      file: "legacy.pdb",
+      age: "2",
+      resource_limit: { omitted_attributes: [attribute], utf16_budget: 4096 },
+    };
+    expect(ghidraPePdbLimitations(legacy, pdb)).toEqual(
+      ghidraPdbLimitations(pdb),
+    );
+  },
+);
+
 it("retains missing-report uncertainty without a declared CodeView record", () => {
   const { codeView: _, ...withoutReference } = target;
   expect(ghidraPePdbLimitations(withoutReference, undefined)).toEqual(

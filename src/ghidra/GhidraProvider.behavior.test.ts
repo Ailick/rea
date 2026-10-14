@@ -85,7 +85,12 @@ const createElfClient = async (ghidra: GhidraProvider) => {
   return ghidra.createClient(target, resolved.value.profile);
 };
 
-it.each(["program-info-v1", "program-info-v2", "program-info-v3"])(
+it.each([
+  "program-info-v1",
+  "program-info-v2",
+  "program-info-v3",
+  "program-info-v4",
+])(
   "retains historical PE PDB Evidence for %s without replaying its old projection",
   async (pdbObservations) => {
     const target = peTarget("x86_64");
@@ -99,7 +104,11 @@ it.each(["program-info-v1", "program-info-v2", "program-info-v3"])(
     });
     const operation = "search_procedures";
     const parameters = { pattern: "wmain" };
-    const limitations = ["Legacy projection collapsed unknown PDB load state."];
+    const limitations = [
+      pdbObservations === "program-info-v4"
+        ? "Legacy projection discarded NB10 declaration when the reported GUID was omitted."
+        : "Legacy projection collapsed unknown PDB load state.",
+    ];
     const cache = new AnalysisSnapshotCache();
     cache.record({
       target,

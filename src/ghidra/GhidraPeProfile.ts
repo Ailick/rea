@@ -15,6 +15,10 @@ const reportedPdbMatchesDeclaration = (
   reported: NonNullable<GhidraSessionInfo["pdb"]>,
 ): boolean => {
   if (
+    reported.resource_limit?.omitted_attributes.some(
+      (attribute) =>
+        attribute === "file" || attribute === "guid" || attribute === "age",
+    ) ||
     (reported.file !== declared.pdbPath &&
       reported.file !== declared.pdbFileName) ||
     reported.age === null ||
